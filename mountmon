@@ -1,0 +1,44 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import time
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+from gi.repository import Gio, GLib
+
+
+
+
+
+
+class Main:
+    def __init__(self):
+        self.volmon = Gio.VolumeMonitor.get()
+
+        self.volmon.connect("mount-added", self.on_mount_added)
+        self.volmon.connect("mount-removed", self.on_mount_removed)
+        self.volmon.connect("mount-changed", self.on_mount_changed)
+
+    def on_mount_added(self, volmon, mount):
+        print("Mount added: %s, root: %s" % (mount.get_name(), mount.get_root().get_uri()))
+        print("mounts now: \n%s" % volmon.get_mounts())
+
+    def on_mount_removed(self, volmon, mount):
+        print("Mount removed: %s, root: %s" % (mount.get_name(), mount.get_root().get_uri()))
+        print("mounts now: \n%s" % volmon.get_mounts())
+
+
+    def on_mount_changed(self, volmon, mount):
+        print("Mount changed: %s, root: %s" % (mount.get_name(), mount.get_root().get_uri()))
+        print("mounts now: \n%s" % volmon.get_mounts())
+
+
+
+
+Main()
+loop = GLib.MainLoop.new(None, False)
+loop.run()
+
+loop.quit()

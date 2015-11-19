@@ -1,0 +1,19 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import time
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+if len(sys.argv) < 3:
+    print("Usage:  fondle <filename> <frequency in seconds>")
+    quit()
+
+while True:
+    print("fondling %s" % sys.argv[1])
+    os.system("touch %s" % sys.argv[1])
+    time.sleep(float(sys.argv[2]))
+
+quit()
+
