@@ -1,0 +1,58 @@
+#!/usr/bin/python3
+import gi
+gi.require_version('Gtk', '3.0')
+from gi.repository import Gtk, GLib
+import os
+import sys
+import time
+import signal
+
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+TOTAL = 100
+
+class WindowMapTest(object):
+
+    def __init__(self):
+        super(WindowMapTest, self).__init__()
+        self.window_mapped_count = 0
+        self.start_time = 0
+
+        GLib.timeout_add(2000, self.start)
+
+    def start(self):
+        print("starting")
+        self.start_time = time.monotonic()
+
+        x = 0
+
+        while x < TOTAL:
+            window = Gtk.Window()
+
+            window.number = x
+            window.connect("map-event", self.on_window_mapped)
+
+            main_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL,
+                                margin=6,
+                                spacing=6)
+            window.add(main_box)
+            label = Gtk.Label("HI THERE I'M %d" % x)
+            main_box.pack_start(label, True, True, 0)
+            window.show_all()
+
+            x += 1
+
+    def on_window_mapped(self, widget, event, data=None):
+        print("Window %d mapped!" % widget.number)
+        self.window_mapped_count += 1
+
+        if self.window_mapped_count == TOTAL:
+            elapsed = time.monotonic() - self.start_time
+            print("Took %f to map %d windows" % (elapsed, TOTAL))
+            GLib.timeout_add(2000, Gtk.main_quit)
+
+        return False
+
+if __name__ == '__main__':
+    applet = WindowMapTest()
+    Gtk.main()

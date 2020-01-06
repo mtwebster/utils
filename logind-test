@@ -1,0 +1,35 @@
+#! /usr/bin/python3
+
+from gi.repository import Gio, GObject, GLib
+import dbus
+import os
+
+LOGIND_SERVICE                  = "org.freedesktop.login1"
+LOGIND_PATH                     = "/org/freedesktop/login1"
+LOGIND_INTERFACE                = "org.freedesktop.login1.Manager"
+
+def get_id():
+	pid = os.getpid()
+
+	logind_manager_proxy = Gio.DBusProxy.new_for_bus_sync(Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None,
+		                                          LOGIND_SERVICE, LOGIND_PATH, LOGIND_INTERFACE,
+		                                          None)
+
+	try:
+		session_id = logind_manager_proxy.GetSessionByPID("(u)", pid)
+		print("Session ID is: ", session_id)
+	except Exception as e:
+		print("FAILED", e)
+	
+	ml.quit()
+
+if __name__ == "__main__":
+
+    ml = GLib.MainLoop.new(None, True)
+    GObject.idle_add(get_id)    
+
+    ml.run()
+
+
+
+

@@ -6,36 +6,89 @@ import time
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-from gi.repository import Gio, GLib
-
-
-
-
-
+from gi.repository import Gio, GLib, GObject
 
 class Main:
     def __init__(self):
+        self.idle_id = 0
+
+        self.netmon = Gio.NetworkMonitor.get_default()
         self.volmon = Gio.VolumeMonitor.get()
 
+        self.netmon.connect("network-changed", self.on_net_changed)
         self.volmon.connect("mount-added", self.on_mount_added)
         self.volmon.connect("mount-removed", self.on_mount_removed)
         self.volmon.connect("mount-changed", self.on_mount_changed)
 
+        self.print_mounts()
+
+    def report(self, *args):
+        if self.idle_id > 0:
+            GObject.source_remove(self.idle_id)
+            self.idle_id = 0
+
+        self.idle_id = GObject.idle_add(self.on_idle_report)
+
+    def on_idle_report(self):
+        self.print_mounts()
+
+        self.idle_id = 0
+        return False
+
+    def on_net_changed(self, netmon, available, data=None):
+        self.report()
+
     def on_mount_added(self, volmon, mount):
         print("Mount added: %s, root: %s" % (mount.get_name(), mount.get_root().get_uri()))
-        print("mounts now: \n%s" % volmon.get_mounts())
+        print(mount.get_drive().enumerate_identifiers())
+        self.report()
 
     def on_mount_removed(self, volmon, mount):
         print("Mount removed: %s, root: %s" % (mount.get_name(), mount.get_root().get_uri()))
-        print("mounts now: \n%s" % volmon.get_mounts())
-
+        self.report()
 
     def on_mount_changed(self, volmon, mount):
         print("Mount changed: %s, root: %s" % (mount.get_name(), mount.get_root().get_uri()))
-        print("mounts now: \n%s" % volmon.get_mounts())
+        self.report()
 
+    def can_reach_mount(self, mount):
+        base_file = mount.get_root()
 
+        if base_file.is_native():
+            return (True, "")
 
+        connectable = Gio.NetworkAddress.parse_uri(base_file.get_uri(), 80)
+
+        try:
+            if self.netmon.can_reach(connectable, None):
+                return (True, "")
+            else:
+                return (False, "")
+        except GLib.Error as e:
+            # print("Error reaching %s: %s" % (base_file.get_uri(), e.message))
+            return (False, e.message)
+
+    def print_mounts(self):
+        self.print_netstatus()
+
+        mounts = self.volmon.get_mounts()
+        print("Mounts now:")
+        for mount in mounts:
+            netstatus = ""
+            (can_reach, errormsg) = self.can_reach_mount(mount)
+            if not can_reach:
+                if errormsg == "":
+                    netstatus = "Unreachable (unknown reason)"
+                else:
+                    netstatus = errormsg
+
+            print("- %s  (%s) - %s" % (mount.get_name(), mount.get_root().get_uri(), netstatus))
+
+    def print_netstatus(self):
+        if self.netmon.get_network_available():
+            print("Network available")
+        else:
+            print("Network unavailable")
 
 Main()
 loop = GLib.MainLoop.new(None, False)
