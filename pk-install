@@ -1,0 +1,33 @@
+#! /usr/bin/python3
+# -*- coding=utf-8 -*-
+
+import os
+import sys
+import gi
+
+gi.require_version("Gtk", "3.0")
+gi.require_version("CinnamonDesktop", "3.0")
+from gi.repository import CinnamonDesktop, Gtk, GLib, Gio, GObject
+
+
+class Installer():
+    def __init__(self, package_list=[]):
+        self.packages = package_list
+
+    def install(self):
+        print("Installing: ", self.packages)
+        CinnamonDesktop.installer_install_packages(self.packages,
+                                                   self.install_done)
+
+    def install_done(self, success, data=None):
+        print("Finished installing (success=%d): " % success, self.packages)
+        Gtk.main_quit()
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Need package names")
+        exit(1)
+
+    i = Installer(sys.argv[1:])
+    i.install()
+    Gtk.main()

@@ -1,0 +1,139 @@
+#!/usr/bin/python3
+
+import sys
+import time
+
+import apt_pkg
+import apt
+import apt.progress.base
+import sys
+
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version("PackageKitGlib", "1.0")
+from gi.repository import PackageKitGlib as packagekit
+from gi.repository import Gtk, Gio
+
+class MyClass():
+
+    def __init__(self, pkg_name):
+
+        self.apt_cache = apt.Cache()
+        self.pkg = self.apt_cache[pkg_name]
+
+        window = Gtk.Window()
+        box = Gtk.Box()
+        self.label_driver = Gtk.Label()
+        self.progress_bar = Gtk.ProgressBar()
+        self.button = Gtk.Button()
+        self.button.set_label("GO")
+        self.button.connect("clicked", self.go)
+        self.button.set_sensitive(False)
+        box.pack_start(self.label_driver, True, True, 12)
+        box.pack_start(self.progress_bar, True, True, 12)
+        box.pack_start(self.button, True, True, 12)
+        window.add(box)
+        window.show_all()
+        window.resize(320, 200)
+        window.connect("destroy", Gtk.main_quit)
+
+        rtask = packagekit.Task()
+        rtask.refresh_cache_async(True, Gio.Cancellable(), self.refresh_progress, (None, ), self.refresh_ready, (None, ))
+
+    def refresh_progress(self, progress, ptype, data=None):
+        if ptype == packagekit.ProgressType.PERCENTAGE:
+            prog_value = progress.get_property('percentage')
+            print("cache progress", prog_value)
+
+    def refresh_ready(self, source, result, data=None):
+        self.button.set_sensitive(True)
+
+    def go(self, widget):
+        self.pk_task = packagekit.Task()
+        installs = []
+        removals = []
+
+        pkg = self.pkg
+
+        if pkg.is_installed:
+            removals.append(self.get_package_id(pkg.installed))
+            # The main NVIDIA package is only a metapackage.
+            # We need to collect its dependencies, so that
+            # we can uninstall the driver properly.
+            if 'nvidia' in pkg.shortname:
+                for dep in self.get_dependencies(self.apt_cache, pkg.shortname, 'nvidia'):
+                    dep_pkg = self.apt_cache[dep]
+                    if dep_pkg.is_installed:
+                        removals.append(self.get_package_id(dep_pkg.installed))
+        else:
+            installs.append(self.get_package_id(pkg.candidate))
+
+        self.cancellable = Gio.Cancellable()
+        try:
+            if removals:
+                installs_pending = False
+                if installs:
+                    installs_pending = True
+                self.pk_task.remove_packages_async(removals,
+                            False,  # allow deps
+                            True,  # autoremove
+                            self.cancellable,  # cancellable
+                            self.on_driver_changes_progress,
+                            (None, ),  # progress data
+                            self.on_driver_changes_finish,  # callback ready
+                            installs_pending  # callback data
+                 )
+            if installs:
+                self.pk_task.install_packages_async(installs,
+                        self.cancellable,  # cancellable
+                        self.on_driver_changes_progress,
+                        (None, ),  # progress data
+                        self.on_driver_changes_finish,  # GAsyncReadyCallback
+                        False  # ready data
+                 )
+
+        except Exception as e:
+            print("Warning: install transaction not completed successfully: {}".format(e))
+
+
+    def on_driver_changes_progress(self, progress, ptype, data=None):
+        #print(progress)
+        self.progress_bar.set_visible(True)
+        self.progress_bar.set_visible(True)
+        self.label_driver.set_label("Applying changes...")
+        if ptype == packagekit.ProgressType.PERCENTAGE:
+            prog_value = progress.get_property('percentage')
+            self.progress_bar.set_fraction(prog_value / 100.0)
+
+    def on_driver_changes_finish(self, source, result, installs_pending):
+        results = None
+        try:
+            results = self.pk_task.generic_finish(result)
+        except Exception as e:
+            self.label_driver.set_label("Error while applying changes: %s" % str(e))
+        if not installs_pending:
+            self.progress_bar.set_visible(False)
+            self.label_driver.set_label("Finished")
+
+    def get_package_id(self, ver):
+        """ Return the PackageKit package id """
+        assert isinstance(ver, apt.package.Version)
+        return "%s;%s;%s;" % (ver.package.shortname, ver.version, ver.package.architecture())
+
+    @staticmethod
+    def get_dependencies(apt_cache, package_name, pattern=None):
+        """ Get the package dependencies, which can be filtered out by a pattern """
+        dependencies = []
+        for or_group in apt_cache[package_name].candidate.dependencies:
+          for dep in or_group:
+            if dep.rawtype in ["Depends", "PreDepends"]:
+              dependencies.append(dep.name)
+        if pattern:
+          dependencies = [ x for x in dependencies if x.find(pattern) != -1 ]
+        return dependencies
+
+if __name__ == "__main__":
+    pkg_name = sys.argv[1]
+    MyClass(pkg_name)
+    Gtk.main()
+
